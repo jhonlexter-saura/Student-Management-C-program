@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <time.h>
 
 
 typedef enum {
@@ -11,6 +12,8 @@ typedef enum {
     EDIT_STUDENT_INFO,
     LIST_STUDENTS,
     RANK_STUDENTS,
+    READ_FILE,
+    EXPORT_FILE,
     EXIT
 } OPTIONS;
 
@@ -31,15 +34,20 @@ typedef struct {
 } StudentDatabase;
 
 void menu();
+void askDetailsToEditMenu();
 void initSetup(StudentDatabase *db);
+
 void printStudent(Student student);
 void initDatabase(StudentDatabase *db, int initialCapacity);
 void resizeDatabase(StudentDatabase *db);
 void addStudent(StudentDatabase *db);
 void viewStudent(StudentDatabase *db);
-void trimWhitespace(char *str);
 void removeStudent(StudentDatabase *db);
+void editStudentInfo(StudentDatabase *db);
+
+void trimWhitespace(char *str);
 bool endSession();
+void timeDelay(double seconds);
 
 int main() {
 
@@ -57,21 +65,27 @@ int main() {
         switch (choice) {
             case ADD_STUDENT:
                 addStudent(&myDB);
-                if (endSession() == false) {
+                while (endSession() == false) {
                    addStudent(&myDB);
                 }
                 break;
             case VIEW_STUDENT:
                 viewStudent(&myDB);
-                if (endSession() == false) {
+                while (endSession() == false) {
                    viewStudent(&myDB);
                 }
                 break;
             case DELETE_STUDENT:
-                printf("Removing Student\n");
+                removeStudent(&myDB);
+                while(endSession() == false) {
+                    removeStudent(&myDB);
+                }
                 break;
             case EDIT_STUDENT_INFO:
-                printf("Editing Student Info\n");
+                editStudentInfo(&myDB);
+                while (endSession() == false) {
+                   editStudentInfo(&myDB);
+                   }
                 break;
             case LIST_STUDENTS:
                 printf("Viewing ng Student List\n");
@@ -79,27 +93,43 @@ int main() {
             case RANK_STUDENTS:
                 printf("Viewing Student Ranking\n");
                 break;
+            case READ_FILE:
+                printf("Reading File\n");
+                break;
+            case EXPORT_FILE:
+                printf("Generating File\n");
+                break;
             case EXIT:
                 printf("\nExiting...");
                 exit(0);
             default:
                 printf("\nInvalid Choice Selected! Try again.\n\n");    
         }
-    } while(choice > 0 || choice <= 7);
+    } while(choice > 0 || choice <= 9);
     
     free(myDB.students);
     return 0;
 }
 
+void timeDelay(double seconds) {
+    struct timespec ts;
+    ts.tv_sec = (time_t)seconds;
+    ts.tv_nsec = (long)((seconds - ts.tv_sec) * 1000000000L);
+    nanosleep(&ts, NULL);
+}
+
 void menu() {
-    printf("\nStudent Management System\n");
+    system("clear");
+    printf("Student Management System\n");
     printf("1. Add Student\n");
     printf("2. View Student Info\n");
     printf("3. Remove Student\n");
     printf("4. Edit Student Info\n");
     printf("5. View Student List\n");
     printf("6. Student Ranking\n");
-    printf("7. Exit\n");
+    printf("7. Read Data From File\n");
+    printf("8. Export Data To File\n");
+    printf("9. Exit\n");
     printf("\n");
 }
 
@@ -264,8 +294,123 @@ void removeStudent(StudentDatabase *db) {
             }
             db->count--;
             printf("Student removed successfully.\n");
+            timeDelay(0.5);
             return;
         }
     }
     printf("Student not found.\n");
+}
+
+void editStudentInfo(StudentDatabase *db) {
+    system("clear");
+    char name[50];
+    char input[20];
+    int input_number;
+    int choice;
+    
+    
+    printf("Enter the student name to edit: ");
+    while (getchar() != '\n');
+    fgets(name, sizeof(name), stdin);
+    trimWhitespace(name);
+    
+    for (int i=0; i< db->count; i++) {
+        if(strcmp(name, db->students[i].name) == 0) {
+            do {
+            askDetailsToEditMenu();
+            scanf("%d", &choice);
+            
+            switch (choice) {
+                case 1:
+                    printf("Enter new name: ");
+                    while (getchar() != '\n');
+                    fgets(name, sizeof(name), stdin);
+                    trimWhitespace(name);
+                    
+                    strcpy(db->students[i].name, name);
+                    system("clear");
+                    printf("\nName changed to: %s", name);
+                    timeDelay(0.5);
+                    break;
+                    
+                case 2:
+                    printf("Enter new age: ");
+                    scanf("%d", &input_number);
+                    
+                    db->students[i].age = input_number;
+                    system("clear");
+                    printf("Age changed to: %d", input_number);
+                    timeDelay(0.5);
+                    break;
+                    
+                case 3:
+                    printf("Enter new year level: ");
+                    while (getchar() != '\n');
+                    fgets(input, sizeof(input), stdin);
+                    trimWhitespace(input);
+                    
+                    strcpy(db->students[i].yearLevel, input);
+                    system("clear");
+                    printf("Year Level changed to: %s", input);
+                    timeDelay(0.5);
+                    break;
+                    
+                case 4:
+                    printf("Enter new grade: ");
+                    scanf("%f", &input_number);
+                    
+                    db->students[i].grade = input_number;
+                    system("clear");
+                    printf("Grade changed to: %.2f", input_number);
+                    timeDelay(0.5);
+                    break;
+                
+                case 5:
+                    printf("Update student status. Enrolled(1) or Not Enrolled (0)\nNew Status: ");
+                    scanf("%d", &input_number);
+                    
+                    if (input_number == 1) {
+                        db->students[i].isEnrolled = true;
+                        system("clear");
+                        printf("Changed student status to Enrolled.\n");
+                        timeDelay(0.5);
+                    } else if(input_number == 2) {
+                        db->students[i].isEnrolled = false;
+                        system("clear");
+                        printf("Student is now currently Not Enrolled\n");
+                        timeDelay(0.5);
+                    } else {
+                        printf("That choice is invalid!\nExiting...\n");
+                        timeDelay(0.5);
+                        system("clear");
+                        return;
+                    }
+                    break;
+                    
+                case 6:
+                    printf("Exiting...");
+                    timeDelay(0.5);
+                    return;
+                    
+                default:
+                    printf("Invalid choice! Try again\n");    
+                    break;    
+                }
+            } while (choice > 0 || choice <= 6);
+        }
+    }
+    printf("Student not found.\n");
+    timeDelay(.5);
+    system("clear");
+}
+
+void askDetailsToEditMenu() {
+    system("clear");
+    printf("\nChoose among which you want to edit.\n");
+    printf("1. Name\n");
+    printf("2. Age\n");
+    printf("3. Year Level\n");
+    printf("4. Grade\n");
+    printf("5. Status\n");
+    printf("6. Exit\n");  // ✅ add this
 }
