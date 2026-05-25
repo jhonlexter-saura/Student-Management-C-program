@@ -3,7 +3,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
+#include <termios.h>
+#include <unistd.h>
 
+#define FILE_PATH "/data/data/com.termux/files/home/storage/shared/Documents/markor/students.txt"
 
 typedef enum {
     ADD_STUDENT = 1,
@@ -44,10 +47,17 @@ void addStudent(StudentDatabase *db);
 void viewStudent(StudentDatabase *db);
 void removeStudent(StudentDatabase *db);
 void editStudentInfo(StudentDatabase *db);
+void listStudents(StudentDatabase *db);
+void rankStudents(StudentDatabase *db);
+void loadFromFile(StudentDatabase *db);
+void saveToFile(StudentDatabase *db);
+
 
 void trimWhitespace(char *str);
 bool endSession();
 void timeDelay(double seconds);
+int compareByGrade(const void *a, const void *b);
+void waitForKeypress();
 
 int main() {
 
@@ -56,6 +66,7 @@ int main() {
     int choice;
     
     initSetup(&myDB);
+    loadFromFile(&myDB);
     
     do{
         menu();
@@ -65,8 +76,10 @@ int main() {
         switch (choice) {
             case ADD_STUDENT:
                 addStudent(&myDB);
+                saveToFile(&myDB);
                 while (endSession() == false) {
                    addStudent(&myDB);
+                   saveToFile(&myDB);
                 }
                 break;
             case VIEW_STUDENT:
@@ -77,35 +90,41 @@ int main() {
                 break;
             case DELETE_STUDENT:
                 removeStudent(&myDB);
+                saveToFile(&myDB);
                 while(endSession() == false) {
                     removeStudent(&myDB);
+                    saveToFile(&myDB);
                 }
                 break;
             case EDIT_STUDENT_INFO:
                 editStudentInfo(&myDB);
+                saveToFile(&myDB);
                 while (endSession() == false) {
                    editStudentInfo(&myDB);
+                   saveToFile(&myDB);
                    }
                 break;
             case LIST_STUDENTS:
-                printf("Viewing ng Student List\n");
+                listStudents(&myDB);
                 break;
             case RANK_STUDENTS:
-                printf("Viewing Student Ranking\n");
+                rankStudents(&myDB);
                 break;
             case READ_FILE:
-                printf("Reading File\n");
+                myDB.count = 0;
+                loadFromFile(&myDB);
                 break;
             case EXPORT_FILE:
-                printf("Generating File\n");
+                saveToFile(&myDB);
                 break;
             case EXIT:
                 printf("\nExiting...");
                 exit(0);
             default:
-                printf("\nInvalid Choice Selected! Try again.\n\n");    
+                printf("\nInvalid Choice Selected! Try again.\n\n");   
+                waitForKeypress();
         }
-    } while(choice > 0 || choice <= 9);
+    } while(choice > 0 && choice <= 9);
     
     free(myDB.students);
     return 0;
@@ -137,7 +156,7 @@ bool endSession() {
         
         char confirm[10];
         
-        printf("\nGo back to menu? (Y) Do another task(any key): ");
+        printf("\nGo back to menu? (Y): ");
         scanf("%s", confirm);
 
         if (strcasecmp(confirm, "Y") == 0 || strcasecmp(confirm, "YES") == 0) {
@@ -163,7 +182,7 @@ void initDatabase(StudentDatabase *db, int initialCapacity) {
     db->capacity = initialCapacity;
     db->lastID = 100;
     
-    db->students = (Student *)malloc(initialCapacity * sizeof(Student));
+    db->students = (Student *)calloc(initialCapacity, sizeof(Student));
     
     if (db->students == NULL) {
         printf("Memory Allocation Failed!\n");
@@ -181,6 +200,7 @@ void resizeDatabase(StudentDatabase *db) {
     
     if (temp == NULL) {
         printf("Memory Allocation Failed!\n");
+        db->capacity /= 2;
         return;
     }
     db->students = temp;
@@ -194,6 +214,7 @@ void addStudent(StudentDatabase *db) {
     }
     
     Student student;
+    memset(&student, 0, sizeof(Student));  // ✅ zeroes everything before assigning fields
     char answer[5];
     
     db->lastID++;
@@ -218,26 +239,18 @@ void addStudent(StudentDatabase *db) {
     
     printf("Is the student enrolled (Y/N): ");
     
-    scanf("%s", &answer);
+    scanf("%s", answer);
     
     student.isEnrolled = (answer[0] == 'Y' || answer[0] == 'y');
     
     db->students[db->count++] = student;
     printf("\nStudent added successfully.\n");
+    waitForKeypress();
     
 }
 
 void initSetup(StudentDatabase *db) {
-    int amount;
-    
-    printf("How many students are expected: ");
-    scanf("%d", &amount);
-    
-    if (amount < 1) {
-        printf("Invalid amount. Defaulting to 1.\n");
-        amount = 1;
-    }
-    
+    int amount = 30;
     initDatabase(db, amount);
 }
 
@@ -253,10 +266,12 @@ void viewStudent(StudentDatabase *db) {
     for (int i=0; i< db->count; i++) {
         if(strcmp(lookupName, db->students[i].name) == 0) {
             printStudent(db->students[i]);
+            waitForKeypress();
             return;
         }
     }
     printf("Student not found.\n");
+    waitForKeypress();
 }
 
 void trimWhitespace(char *str) {
@@ -295,16 +310,19 @@ void removeStudent(StudentDatabase *db) {
             db->count--;
             printf("Student removed successfully.\n");
             timeDelay(0.5);
+            waitForKeypress();
             return;
         }
     }
     printf("Student not found.\n");
+    waitForKeypress();
 }
 
 void editStudentInfo(StudentDatabase *db) {
     system("clear");
     char name[50];
     char input[20];
+    float input_float;
     int input_number;
     int choice;
     
@@ -316,6 +334,9 @@ void editStudentInfo(StudentDatabase *db) {
     
     for (int i=0; i< db->count; i++) {
         if(strcmp(name, db->students[i].name) == 0) {
+        
+            bool editing = true;
+            
             do {
             askDetailsToEditMenu();
             scanf("%d", &choice);
@@ -331,6 +352,7 @@ void editStudentInfo(StudentDatabase *db) {
                     system("clear");
                     printf("\nName changed to: %s", name);
                     timeDelay(0.5);
+                    waitForKeypress();
                     break;
                     
                 case 2:
@@ -341,6 +363,7 @@ void editStudentInfo(StudentDatabase *db) {
                     system("clear");
                     printf("Age changed to: %d", input_number);
                     timeDelay(0.5);
+                    waitForKeypress();
                     break;
                     
                 case 3:
@@ -353,16 +376,18 @@ void editStudentInfo(StudentDatabase *db) {
                     system("clear");
                     printf("Year Level changed to: %s", input);
                     timeDelay(0.5);
+                    waitForKeypress();
                     break;
                     
                 case 4:
                     printf("Enter new grade: ");
-                    scanf("%f", &input_number);
+                    scanf("%f", &input_float);
                     
-                    db->students[i].grade = input_number;
+                    db->students[i].grade = input_float;
                     system("clear");
-                    printf("Grade changed to: %.2f", input_number);
+                    printf("Grade changed to: %.2f", input_float);
                     timeDelay(0.5);
+                    waitForKeypress();
                     break;
                 
                 case 5:
@@ -373,12 +398,14 @@ void editStudentInfo(StudentDatabase *db) {
                         db->students[i].isEnrolled = true;
                         system("clear");
                         printf("Changed student status to Enrolled.\n");
+                        waitForKeypress();
                         timeDelay(0.5);
                     } else if(input_number == 2) {
                         db->students[i].isEnrolled = false;
                         system("clear");
                         printf("Student is now currently Not Enrolled\n");
                         timeDelay(0.5);
+                        waitForKeypress();
                     } else {
                         printf("That choice is invalid!\nExiting...\n");
                         timeDelay(0.5);
@@ -390,17 +417,21 @@ void editStudentInfo(StudentDatabase *db) {
                 case 6:
                     printf("Exiting...");
                     timeDelay(0.5);
+                    editing = false;
                     return;
                     
                 default:
-                    printf("Invalid choice! Try again\n");    
+                    printf("Invalid choice! Try again\n");   
+                    waitForKeypress();
                     break;    
                 }
-            } while (choice > 0 || choice <= 6);
+            } while (editing);
+            return;
         }
     }
     printf("Student not found.\n");
-    timeDelay(.5);
+    timeDelay(0.5);
+    waitForKeypress();
     system("clear");
 }
 
@@ -413,4 +444,136 @@ void askDetailsToEditMenu() {
     printf("4. Grade\n");
     printf("5. Status\n");
     printf("6. Exit\n");  // ✅ add this
+}
+
+void listStudents(StudentDatabase *db) {
+    system("clear");
+    
+    printf("List of Students.\n");
+    for (int i=0; i<db->count; i++) {
+        printf("%d. %s\n", i+1, db->students[i].name);
+    }
+    
+    waitForKeypress();
+}
+
+void rankStudents(StudentDatabase *db) {
+    system("clear");
+    
+    if (db->count == 0) {
+        printf("No students in the database.\n");
+        return;
+    }
+
+    // Create a copy of the students array
+    Student *ranked = (Student *)malloc(db->count * sizeof(Student));
+    
+    if (ranked == NULL) {
+        printf("Memory Allocation Failed!\n");
+        return;
+    }
+
+    memcpy(ranked, db->students, db->count * sizeof(Student));
+    
+    qsort(ranked, db->count, sizeof(Student), compareByGrade);
+
+    printf("=== Student Rankings ===\n\n");
+    for (int i = 0; i < db->count; i++) {
+        printf("Rank %d\n", i + 1);
+        printf("Name: %s\n", ranked[i].name);
+        printf("ID: %d\n", ranked[i].id);
+        printf("Grade: %.2f\n", ranked[i].grade);
+        printf("Status: %s\n", ranked[i].isEnrolled ? "Enrolled" : "Not Enrolled");
+        printf("\n");
+    }
+    
+    waitForKeypress();
+    
+    free(ranked);
+}
+
+int compareByGrade(const void *a, const void *b) {
+    Student *studentA = (Student *)a;
+    Student *studentB = (Student *)b;
+
+    if (studentB->grade > studentA->grade) return 1;
+    if (studentB->grade < studentA->grade) return -1;
+    return 0;
+}
+
+void waitForKeypress() {
+    printf("\nPress any key to continue...");
+    fflush(stdout);
+    
+    struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);         // save current terminal settings
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);       // disable buffering and echo
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt); // apply new settings
+    
+    (void)getchar();                               // wait for any keypress
+    
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldt); // restore original settings
+}
+
+void saveToFile(StudentDatabase *db) {
+    FILE *file = fopen(FILE_PATH, "w");
+    
+    if (file == NULL) {
+        printf("Failed to open file for writing.\n");
+        return;
+    }
+
+    fprintf(file, "%d\n", db->count);
+
+    for (int i = 0; i < db->count; i++) {
+        if (strlen(db->students[i].name) == 0) continue;
+        fprintf(file, "%d\n", db->students[i].id);
+        fprintf(file, "%s\n", db->students[i].name);
+        fprintf(file, "%d\n", db->students[i].age);
+        fprintf(file, "%s\n", db->students[i].yearLevel);
+        fprintf(file, "%.2f\n", db->students[i].grade);
+        fprintf(file, "%d\n", db->students[i].isEnrolled);
+    }
+
+    fclose(file);
+    printf("Students saved successfully.\n");
+}
+
+void loadFromFile(StudentDatabase *db) {
+    FILE *file = fopen(FILE_PATH, "r");
+    
+    if (file == NULL) {
+        printf("No saved data found.\n");
+        return;
+    }
+
+    int count;
+    fscanf(file, "%d\n", &count);
+
+    for (int i = 0; i < count; i++) {
+        if (db->count >= db->capacity) {
+            resizeDatabase(db);
+        }
+
+        Student student;
+
+        fscanf(file, "%d\n", &student.id);
+        fgets(student.name, sizeof(student.name), file);
+        trimWhitespace(student.name);
+        fscanf(file, "%d\n", &student.age);
+        fgets(student.yearLevel, sizeof(student.yearLevel), file);
+        trimWhitespace(student.yearLevel);
+        fscanf(file, "%f\n", &student.grade);
+        fscanf(file, "%d\n", (int *)&student.isEnrolled);
+
+        if (student.id > db->lastID) {
+            db->lastID = student.id;
+        }
+
+        db->students[db->count++] = student;
+    }
+
+    fclose(file);
+    printf("Students loaded successfully.\n");
 }
